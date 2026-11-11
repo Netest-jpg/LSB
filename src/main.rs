@@ -23,7 +23,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     for byte in payload.iter() {
         for bit in 0..8 {
             let msg_bit = (byte >> (7 - bit)) & 1;
-            raw[i] = msg_bit;
+            // clear the least significant bit, then set it to the message bit
+            raw[i] = (raw[i] & !1) | msg_bit;
             i += 1;
         }
     }
@@ -42,15 +43,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         result[chunk_idx] = byte;
     }
-    let length = u32::from_be_bytes(result);
-    if raw.len() < (32 + (length * 8)) as usize {
+    let length = u32::from_be_bytes(result) as usize;
+    // cast before multiplying so a corrupt length can't overflow
+    if raw.len() < 32 + length.saturating_mul(8) {
         return Err("Index out of bounds".into());
     }
-    let lsb: Vec<u8> = raw[32..(32 + (length * 8) as usize)]
-        .iter()
-        .map(|&x| x & 1)
-        .collect();
-    let mut result: Vec<u8> = Vec::with_capacity(length as usize);
+    let lsb: Vec<u8> = raw[32..(32 + length * 8)].iter().map(|&x| x & 1).collect();
+    let mut result: Vec<u8> = Vec::with_capacity(length);
     for chunk in lsb.as_chunks::<8>().0 {
         let mut byte = 0u8;
         for (bit_idx, &value) in chunk.iter().enumerate() {
